@@ -1,0 +1,4 @@
+.AppleDouble/
+config.py
+__pycache__/
+db.db
