@@ -169,8 +169,7 @@ class Bot():
 		return self.cleanemojis(c).upper().strip()
 
 	def wordify(self,c):
-		#remove links + non-alphanumeric chars, then split
-		return [re.sub(r'^[^a-zA-Z0-9_\'’]+|[^a-zA-Z0-9_\'’]+$','', w) for w in c.split()]
+		return [re.sub(r'^[^a-zA-Z0-9]+|[^a-zA-Z0-9]+$','', w) for w in c.split()]
 
 	# GEMATRIA CALCULATIONS
 
@@ -200,6 +199,8 @@ class Bot():
 		s = self.wordify(content)
 		if len(s) > 1:
 			for w in s:
+				if w.isnumeric() or len(w) < 1:
+					continue
 				aq = self.string_to_aq(w)
 				cursor.execute("INSERT OR REPLACE INTO words (word, saved_at, aq, sent_by) VALUES (?, datetime('now'), ?, ?)",[w,aq,sent_by])
 		
