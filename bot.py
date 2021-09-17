@@ -17,6 +17,7 @@ class Bot():
 		self.confirming = None
 
 		self.commands = [
+			("lookup",self.lookup),
 			("calcs",self.calcs),
 			("calc",self.calc),
 			("help",self.help)
@@ -117,7 +118,7 @@ class Bot():
 		respondable = True
 
 		try:
-			if m.content.startswith('aq '):
+			if m.content.lower().startswith('aq '):
 				await self.parse_command(m)
 			elif m.content.startswith('Y') and self.confirming:
 				await self.confirm(m)
@@ -144,7 +145,7 @@ class Bot():
 
 	async def parse_command(self,m):
 		for command,method in self.commands:
-			if m.content[3:].startswith(command):
+			if m.content[3:].lower().startswith(command):
 				await method(m)
 				return
 
@@ -239,7 +240,6 @@ class Bot():
 
 	# return the number of the given string
 	async def calc(self,m,plural=False):
-
 		tc = m.content[9:] if plural else m.content[8:]
 		content = self.cleanContent(tc)
 		aq = self.string_to_aq(content)
@@ -265,3 +265,22 @@ class Bot():
 
 	async def calcs(self,m):
 		await self.calc(m,True)
+
+	async def lookup(self,m):
+		tc = m.content[10:]
+		if not tc.isnumeric():
+			raise FeedbackError("`aq lookup` only takes numerals")
+
+		items = self.get_aqs(int(tc), tc)
+
+		if len(items) < 1:
+			items = "???"
+		else:
+			items = " = ".join(items)
+
+		response = "AQ "+tc+" = "+items
+
+		embed = discord.Embed(description=response)
+
+		await m.reply(embed=embed, mention_author=False)
+
