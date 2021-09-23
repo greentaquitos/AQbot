@@ -20,7 +20,9 @@ class Bot():
 			("lookup",self.lookup),
 			("calcs",self.calcs),
 			("calc",self.calc),
-			("help",self.help)
+			("help",self.help),
+			("roll",self.roll),
+			("r",self.roll_dice)
 		]
 
 		self.AQ = {
@@ -121,14 +123,14 @@ class Bot():
 			if m.content.lower().startswith('aq '):
 				await self.parse_command(m)
 			elif m.content.startswith('Y') and self.confirming:
-				await self.confirm(m)
+				respondable = await self.confirm(m)
 			elif m.content.lower().startswith('n') and self.confirming:
-				await self.deny(m)
+				respondable = await self.deny(m)
 			else:
 				respondable = False
 
 		except FeedbackError as e:
-			await m.reply(f"Hold up: {e}", mention_author=False)
+			await m.reply(embed=discord.Embed(description=f"Hold up: {e}"), mention_author=False)
 
 		except Exception as e:
 			self.log(traceback.format_exc())
@@ -151,16 +153,18 @@ class Bot():
 
 	async def confirm(self,m):
 		if m.author.id != self.confirming[1]:
-			return
+			return False
 		self.confirming[0]()
 		self.confirming = None
 		await m.reply("Okay, done!", mention_author=False)
+		return True
 
 	async def deny(self,m):
 		if m.author.id != self.confirming[1]:
-			return
+			return False
 		self.confirming = None
 		await m.reply("Okay, nevermind!", mention_author=False)
+		return True
 
 	def cleanemojis(self, string):
 	    return re.sub(r"<a?:([a-zA-Z0-9_-]{1,32}):[0-9]{17,21}>", r":\1:", string)
@@ -230,6 +234,13 @@ class Bot():
 
 		return items
 
+	def get_random_phrase(self):
+		table = random.choice([('queries','q_string'),('words','word'),('messages','content')])
+		cur = self.db.execute("SELECT "+table[1]+", aq FROM "+table[0]+" ORDER BY RANDOM() LIMIT 1")
+		symbol = cur.fetchall()[0]
+		cur.close()
+		return symbol
+
 
 	# RESPONSE FORMATTING
 
@@ -237,7 +248,7 @@ class Bot():
 		h_content = m.content[8:]		
 		reply = bothelp.default
 
-		await m.reply(reply, mention_author=False)
+		await m.reply(embed=discord.Embed(description=reply), mention_author=False)
 
 	# return the number of the given string
 	async def calc(self,m,plural=False):
@@ -261,7 +272,6 @@ class Bot():
 		self.save_query(content, aq, m.author.id)
 
 		embed = discord.Embed(description=response)
-
 		await m.reply(embed=embed, mention_author=False)
 
 	async def calcs(self,m):
@@ -282,6 +292,80 @@ class Bot():
 		response = "AQ "+tc+" = "+items
 
 		embed = discord.Embed(description=response)
-
 		await m.reply(embed=embed, mention_author=False)
 
+	async def roll(self,m):
+		symbol = self.get_random_phrase()
+		while symbol[1] == 0:
+			symbol = self.get_random_phrase()
+
+		def shuffle_num(i):
+			n = list(str(i))
+			random.shuffle(n)
+			return int(''.join(n))
+
+		attempts = 0
+		while attempts < 100:
+			aq2 = shuffle_num(symbol[1])
+			while aq2 == symbol[1]:
+				mod = symbol[1]*10 if random.random() < 0.5 else symbol[1]+9
+				aq2 = shuffle_num(mod)
+			items2 = self.get_aqs(aq2,str(aq2))
+			if len(items2) > 0:
+				break
+			attempts += 1
+
+		response = "🎲 " + str(symbol[1])
+		if attempts != 100:
+			response += " -> " + str(aq2) + " 🎲"
+
+		response += "\n\nAQ " + str(symbol[1]) + " = " + symbol[0]
+		items = self.get_aqs(symbol[1],symbol[0])
+		while symbol[0] in items:
+			items.remove(symbol[0])
+		while len(items) > 3:
+			items.pop()
+		if len(items) > 0:
+			response += "\n\n= " + " = ".join(items)
+
+		while len(items2) > 4:
+			items2.pop()
+		response += "\n\nAQ " + str(aq2) + " = "
+		if len(items2) > 0:
+			response += items2[0]
+		else:
+			response += "???"
+
+		embed = discord.Embed(description=response)
+		await m.reply(embed=embed, mention_author=False)
+
+	# DICE
+
+	async def roll_dice(self,m):
+		try:
+			if len(m.content) < 6:
+				mod = 0
+			elif m.content[5] == '+':
+				mod = int(m.content[6:])
+			elif m.content[5] == '-':
+				mod = 0-int(m.content[6:])
+			else:
+				mod = int(m.content[5:])
+		except Exception as e:
+			raise FeedbackError("Invalid roll!\n\nFormat is `aq r [mod]` where mod is an integer.\n\neg, `aq r 3` or `aq r -1`")
+
+		rolls = [random.randint(1,6) for i in range(2)]
+		total = sum(rolls) + mod
+		rlist = ' + '.join([str(r) for r in rolls])
+		
+		modstr = ''
+		if mod > 0:
+			modstr = ' + '
+		elif mod < 0:
+			modstr = ' - '
+		modstr += str(abs(mod)) if mod != 0 else ''
+
+		reply = f"Rolled 2d6{modstr}:\n`{total} = ({rlist}){modstr}`"
+
+		embed = discord.Embed(description=reply)
+		await m.reply(embed=embed, mention_author=False)
