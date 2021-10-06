@@ -76,7 +76,7 @@ class Bot():
 		con = self.db = sqlite3.connect("db.db")
 		schema = {
 			"queries (q_string text unique, saved_at int, aq int, sent_by int)",
-			"messages (content text unique, saved_at int, aq int, sent_by int, msg_id int)",
+			"messages (content text unique, saved_at int, aq int, sent_by int, msg_id int, srv_id int)",
 			"words (word text unique, saved_at int, aq int, sent_by int)"
 		}
 
@@ -191,12 +191,12 @@ class Bot():
 			return
 
 		cursor = self.db.cursor()
-		cursor.execute("INSERT OR REPLACE INTO queries (q_string, saved_at, aq, sent_by) VALUES (?,datetime('now'),?,?)", [s,aq,u])
+		cursor.execute("INSERT OR IGNORE INTO queries (q_string, saved_at, aq, sent_by) VALUES (?,datetime('now'),?,?)", [s,aq,u])
 		self.db.commit()
 		cursor.close()
 
 	def save_message(self,m):
-		if len(m.mentions) > 0 or len(m.channel_mentions) > 0:
+		if len(m.mentions) > 0 or len(m.channel_mentions) > 0 or not m.guild:
 			return
 
 		cursor = self.db.cursor()
@@ -204,7 +204,8 @@ class Bot():
 		aq = self.string_to_aq(content)
 		sent_by = m.author.id
 		msg_id = m.id
-		cursor.execute("INSERT OR REPLACE INTO messages (content, saved_at, aq, sent_by, msg_id) VALUES (?,datetime('now'),?,?,?)",[content,aq,sent_by,msg_id])
+		srv_id = m.guild.id
+		cursor.execute("INSERT OR IGNORE INTO messages (content, saved_at, aq, sent_by, msg_id, srv_id) VALUES (?,datetime('now'),?,?,?,?)",[content,aq,sent_by,msg_id,srv_id])
 		
 		s = self.wordify(content)
 		if len(s) > 1:
@@ -212,18 +213,20 @@ class Bot():
 				if w.isnumeric() or len(w) < 1:
 					continue
 				aq = self.string_to_aq(w)
-				cursor.execute("INSERT OR REPLACE INTO words (word, saved_at, aq, sent_by) VALUES (?, datetime('now'), ?, ?)",[w,aq,sent_by])
+				cursor.execute("INSERT OR IGNORE INTO words (word, saved_at, aq, sent_by) VALUES (?, datetime('now'), ?, ?)",[w,aq,sent_by])
 		
 		self.db.commit()
 		cursor.close()
 
 	# GETTING
 
-	def get_aqs(self, aq, content):
+	def get_aqs(self, aq, content, m):
+		srv_id = m.guild.id if m.guild else 0
+
 		cur = self.db.execute("SELECT q_string FROM queries WHERE aq = ? ORDER BY RANDOM() LIMIT 10", [aq])
 		queries = [q[0] for q in cur.fetchall()]
 
-		cur = self.db.execute("SELECT content FROM messages WHERE aq = ? ORDER BY RANDOM() LIMIT 10", [aq])
+		cur = self.db.execute("SELECT content FROM messages WHERE aq = ? AND srv_id = ? ORDER BY RANDOM() LIMIT 10", [aq,srv_id])
 		messages = [m[0] for m in cur.fetchall()]
 		
 		cur = self.db.execute("SELECT word FROM words WHERE aq = ? ORDER BY RANDOM() LIMIT 10", [aq])
@@ -240,8 +243,13 @@ class Bot():
 
 		return items
 
-	def get_random_phrase(self):
-		table = random.choice([('queries','q_string'),('words','word'),('messages','content')])
+	def get_random_phrase(self, m):
+		srv_filter = " WHERE srv_id = "+str(m.guild.id) if m.guild else ""
+		choices = [('queries','q_string'),('words','word'),('messages'+srv_filter,'content')]
+		if not m.guild:
+			choices.pop()
+
+		table = random.choice(choices)
 		cur = self.db.execute("SELECT "+table[1]+", aq FROM "+table[0]+" ORDER BY RANDOM() LIMIT 1")
 		symbol = cur.fetchall()[0]
 		cur.close()
@@ -262,7 +270,7 @@ class Bot():
 		content = self.cleanContent(tc)
 		aq = self.string_to_aq(content)
 
-		items = self.get_aqs(aq, content)
+		items = self.get_aqs(aq, content, m)
 		while content in items:
 			items.remove(content)
 
@@ -288,7 +296,7 @@ class Bot():
 		if not tc.isnumeric():
 			raise FeedbackError("`aq lookup` only takes numerals")
 
-		items = self.get_aqs(int(tc), tc)
+		items = self.get_aqs(int(tc), tc, m)
 
 		if len(items) < 1:
 			items = "???"
@@ -301,9 +309,9 @@ class Bot():
 		await m.reply(embed=embed, mention_author=False)
 
 	async def roll(self,m):
-		symbol = self.get_random_phrase()
+		symbol = self.get_random_phrase(m)
 		while symbol[1] == 0:
-			symbol = self.get_random_phrase()
+			symbol = self.get_random_phrase(m)
 
 		def shuffle_num(i):
 			n = list(str(i))
@@ -316,7 +324,7 @@ class Bot():
 			while aq2 == symbol[1]:
 				mod = symbol[1]*10 if random.random() < 0.5 else symbol[1]+9
 				aq2 = shuffle_num(mod)
-			items2 = self.get_aqs(aq2,str(aq2))
+			items2 = self.get_aqs(aq2,str(aq2), m)
 			if len(items2) > 0:
 				break
 			attempts += 1
@@ -326,7 +334,7 @@ class Bot():
 			response += " -> " + str(aq2) + " 🎲"
 
 		response += "\n\nAQ " + str(symbol[1]) + " = " + symbol[0]
-		items = self.get_aqs(symbol[1],symbol[0])
+		items = self.get_aqs(symbol[1],symbol[0], m)
 		while symbol[0] in items:
 			items.remove(symbol[0])
 		while len(items) > 3:
