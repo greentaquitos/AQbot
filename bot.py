@@ -186,13 +186,19 @@ class Bot():
 
 	# SAVING
 
-	def save_query(self,s,aq,u):
+	def save_query(self,s,aq,u,m):
+		if len(m.mentions) > 0 or len(m.channel_mentions) > 0:
+			return
+
 		cursor = self.db.cursor()
 		cursor.execute("INSERT OR REPLACE INTO queries (q_string, saved_at, aq, sent_by) VALUES (?,datetime('now'),?,?)", [s,aq,u])
 		self.db.commit()
 		cursor.close()
 
 	def save_message(self,m):
+		if len(m.mentions) > 0 or len(m.channel_mentions) > 0:
+			return
+
 		cursor = self.db.cursor()
 		content = self.cleanContent(m.content)
 		aq = self.string_to_aq(content)
@@ -269,7 +275,7 @@ class Bot():
 
 		response = content + " = AQ " + str(aq) + " = " + items
 
-		self.save_query(content, aq, m.author.id)
+		self.save_query(content, aq, m.author.id, m)
 
 		embed = discord.Embed(description=response)
 		await m.reply(embed=embed, mention_author=False)
