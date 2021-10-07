@@ -331,7 +331,9 @@ class Bot():
 
 		response = "🎲 " + str(symbol[1])
 		if attempts != 100:
-			response += " -> " + str(aq2) + " 🎲"
+			response += " -> " + str(aq2)
+		
+		response += " 🎲"
 
 		response += "\n\nAQ " + str(symbol[1]) + " = " + symbol[0]
 		items = self.get_aqs(symbol[1],symbol[0], m)
@@ -342,13 +344,14 @@ class Bot():
 		if len(items) > 0:
 			response += "\n\n= " + " = ".join(items)
 
-		while len(items2) > 4:
-			items2.pop()
-		response += "\n\nAQ " + str(aq2) + " = "
-		if len(items2) > 0:
-			response += items2[0]
-		else:
-			response += "???"
+		if attempts != 100:
+			while len(items2) > 4:
+				items2.pop()
+			response += "\n\nAQ " + str(aq2) + " = "
+			if len(items2) > 0:
+				response += items2[0]
+			else:
+				response += "???"
 
 		embed = discord.Embed(description=response)
 		await m.reply(embed=embed, mention_author=False)
