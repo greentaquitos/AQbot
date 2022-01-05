@@ -9,6 +9,7 @@ import re
 
 from exceptions import FeedbackError
 import bothelp
+from markovstuff import Markov
 
 
 class Bot():
@@ -187,7 +188,7 @@ class Bot():
 	# SAVING
 
 	def save_query(self,s,aq,u,m):
-		if len(m.mentions) > 0 or len(m.channel_mentions) > 0:
+		if len(m.mentions) > 0 or len(m.channel_mentions) > 0 or '=' in m.content:
 			return
 
 		cursor = self.db.cursor()
@@ -202,15 +203,16 @@ class Bot():
 		cursor = self.db.cursor()
 		content = self.cleanContent(m.content)
 		aq = self.string_to_aq(content)
-		sent_by = m.author.id
-		msg_id = m.id
-		srv_id = m.guild.id
-		cursor.execute("INSERT OR IGNORE INTO messages (content, saved_at, aq, sent_by, msg_id, srv_id) VALUES (?,datetime('now'),?,?,?,?)",[content,aq,sent_by,msg_id,srv_id])
+		if '=' not in content and content[0] not in ['.','!','-']:
+			sent_by = m.author.id
+			msg_id = m.id
+			srv_id = m.guild.id
+			cursor.execute("INSERT OR IGNORE INTO messages (content, saved_at, aq, sent_by, msg_id, srv_id) VALUES (?,datetime('now'),?,?,?,?)",[content,aq,sent_by,msg_id,srv_id])
 		
 		s = self.wordify(content)
 		if len(s) > 1:
 			for w in s:
-				if w.isnumeric() or len(w) < 1:
+				if w.isnumeric() or len(w) < 1 or '=' in w:
 					continue
 				aq = self.string_to_aq(w)
 				cursor.execute("INSERT OR IGNORE INTO words (word, saved_at, aq, sent_by) VALUES (?, datetime('now'), ?, ?)",[w,aq,sent_by])
@@ -220,7 +222,7 @@ class Bot():
 
 	# GETTING
 
-	def get_aqs(self, aq, content, m):
+	def get_aqs(self, aq, content, m, limit=6000):
 		srv_id = m.guild.id if m.guild else 0
 
 		cur = self.db.execute("SELECT q_string FROM queries WHERE aq = ? ORDER BY RANDOM() LIMIT 10", [aq])
@@ -236,7 +238,7 @@ class Bot():
 
 		items = sorted(list(set(queries + messages + words)), key=len)
 
-		while sum(len(s)+3 for s in items) + len(content) + len(str(aq)) + 10 > 6000:
+		while sum(len(s)+3 for s in items) + len(content) + len(str(aq)) + 10 > limit:
 			items.pop()
 
 		random.shuffle(items)
@@ -324,7 +326,7 @@ class Bot():
 			while aq2 == symbol[1]:
 				mod = symbol[1]*10 if random.random() < 0.5 else symbol[1]+9
 				aq2 = shuffle_num(mod)
-			items2 = self.get_aqs(aq2,str(aq2), m)
+			items2 = self.get_aqs(aq2,str(aq2), m, 2950)
 			if len(items2) > 0:
 				break
 			attempts += 1
@@ -336,7 +338,7 @@ class Bot():
 		response += " 🎲"
 
 		response += "\n\nAQ " + str(symbol[1]) + " = " + symbol[0]
-		items = self.get_aqs(symbol[1],symbol[0], m)
+		items = self.get_aqs(symbol[1],symbol[0], m, 2950)
 		while symbol[0] in items:
 			items.remove(symbol[0])
 		while len(items) > 3:
