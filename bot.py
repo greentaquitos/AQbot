@@ -9,7 +9,6 @@ import re
 
 from exceptions import FeedbackError
 import bothelp
-from markovstuff import Markov
 
 
 class Bot():
@@ -23,7 +22,10 @@ class Bot():
 			("calc",self.calc),
 			("help",self.help),
 			("roll",self.roll),
-			("r",self.roll_dice)
+			("r",self.roll_dice),
+			("feed",self.feed),
+			("gfeed",self.gfeed),
+			("pull",self.pull)
 		]
 
 		self.AQ = {
@@ -78,7 +80,8 @@ class Bot():
 		schema = {
 			"queries (q_string text unique, saved_at int, aq int, sent_by int)",
 			"messages (content text unique, saved_at int, aq int, sent_by int, msg_id int, srv_id int)",
-			"words (word text unique, saved_at int, aq int, sent_by int)"
+			"words (word text unique, saved_at int, aq int, sent_by int)",
+			"symbols (name text, saved_at int, sent_by int)"
 		}
 
 		for t in schema:
@@ -220,6 +223,20 @@ class Bot():
 		self.db.commit()
 		cursor.close()
 
+	def save_symbols(self,content,author_id,m,g=False):
+		if len(m.mentions) > 0 or len(m.channel_mentions) > 0:
+			raise Exception("Invalid Input -- mentions are not allowed")
+
+		cursor = self.db.cursor()
+		sent_by = author_id if not g else 0
+
+		for symbol in content:
+			symbol.strip()
+			cursor.execute("INSERT OR IGNORE INTO symbols (name, saved_at, sent_by) VALUES (?, datetime('now'), ?)",[symbol,sent_by])
+
+		self.db.commit()
+		cursor.close()
+
 	# GETTING
 
 	def get_aqs(self, aq, content, m, limit=6000):
@@ -257,8 +274,19 @@ class Bot():
 		cur.close()
 		return symbol
 
+	def get_random_symbols(self, amt, m, g, q, p):
+		if g and p:
+			raise Exception("Flags `g` and `p` are mutually exclusive.")
 
-	# RESPONSE FORMATTING
+		yours = " sent_by = 0 " if not p else " 1=2 "
+		mine = f" sent_by = {m.author.id} " if not g else " 1=2 "
+
+		cur = self.db.execute(f"SELECT name FROM symbols WHERE {yours} OR {mine} ORDER BY RANDOM() LIMIT {amt}")
+		symbols = cur.fetchall()
+		cur.close()
+		return [s[0] for s in symbols]
+
+	# COMMANDS
 
 	async def help(self,m):
 		h_content = m.content[8:]		
@@ -266,7 +294,6 @@ class Bot():
 
 		await m.reply(embed=discord.Embed(description=reply), mention_author=False)
 
-	# return the number of the given string
 	async def calc(self,m,plural=False):
 		tc = m.content[9:] if plural else m.content[8:]
 		content = self.cleanContent(tc)
@@ -357,6 +384,55 @@ class Bot():
 
 		embed = discord.Embed(description=response)
 		await m.reply(embed=embed, mention_author=False)
+
+	async def feed(self,m,g=False):
+		n = 9 if g else 8
+		content = self.cleanContent(m.content[n:]).split(',')
+		
+		try:
+			self.save_symbols(content,m.author.id,m,g)
+			response = "Symbols saved to your personal collection." if not g else "Symbols saved to global collection."
+		except Exception as e:
+			response = e
+
+		await m.reply(embed=discord.Embed(description=response, mention_author=False))
+
+	async def gfeed(self,m):
+
+		# todo: ban plebs
+
+		await self.feed(m,True)
+
+	async def pull(self,m):
+		content = m.content[8:]
+
+		g = 'g' in content
+		p = 'p' in content
+		q = 'q' in content
+
+		if g or p or q:
+			content = m.content.split(' ')
+			if len(content) > 3:
+				amt = content[3]
+			else:
+				amt = 1
+		else:
+			try:
+				amt = int(content)
+			except:
+				amt = 1
+
+		symbols = self.get_random_symbols(amt,m,g,q,p)
+		response = '\n'.join(symbols)
+
+		if not response:
+			response = "No symbols found."
+
+		# todo: q, p
+		# todo: help
+
+		await m.reply(embed=discord.Embed(description=response, mention_author=False))
+
 
 	# DICE
 
