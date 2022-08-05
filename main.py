@@ -1,6 +1,6 @@
 #!/usr/bin/env LC_ALL=en_US.UTF-8 /usr/local/bin/python3.6
 
-from config import TOKEN
+from config import TOKEN, GFEEDER
 from bot import Bot
 
 import sys
@@ -22,4 +22,4 @@ async def on_ready():
 async def on_message(message):
 	await b.on_message(message)
 
-b.start_bot(TOKEN)
+b.start_bot(TOKEN,GFEEDER)

@@ -98,7 +98,8 @@ class Bot():
 		intents.members = True
 		self.client = discord.Client(intents=intents)
 
-	def start_bot(self,token):
+	def start_bot(self,token,gfeeder):
+		self.gfeeder = gfeeder
 		self.client.run(token)
 
 	# UTIL
@@ -398,9 +399,8 @@ class Bot():
 		await m.reply(embed=discord.Embed(description=response, mention_author=False))
 
 	async def gfeed(self,m):
-
-		# todo: ban plebs
-
+		if str(m.author.id) != self.gfeeder:
+			raise Exception("Only authorized user can gfeed.")
 		await self.feed(m,True)
 
 	async def pull(self,m):
@@ -427,9 +427,6 @@ class Bot():
 
 		if not response:
 			response = "No symbols found."
-
-		# todo: q, p
-		# todo: help
 
 		await m.reply(embed=discord.Embed(description=response, mention_author=False))
 
